@@ -1,0 +1,97 @@
+#include "HX711.h"
+#include <EEPROM.h>
+#include <NeoPixelBus.h>
+
+HX711 scale;
+
+// HX711 circuit wiring
+const int LOADCELL_DOUT_PIN = 2;
+const int LOADCELL_SCK_PIN = 3;
+
+int ledcount;
+int start;
+int tare_start;
+
+const uint16_t PixelCount = 30;
+const uint8_t PixelPin = 5; 
+#define brightness 128
+NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(PixelCount, PixelPin);
+RgbColor red(brightness, 0, 0);
+RgbColor green(0, brightness, 0);
+RgbColor yellow(brightness, brightness,0);
+RgbColor black(0);
+
+// EEPROM connect både write og read
+void writeIntIntoEEPROM(int address, int number)
+{ 
+  
+  EEPROM.write(address, number >> 8);
+  EEPROM.write(address + 1, number & 0xFF);
+
+}
+
+int readIntFromEEPROM(int address)
+
+{
+  
+  return (EEPROM.read(address) << 8) + EEPROM.read(address + 1);
+  
+}
+
+// Definerer highscore vi læser fra EEPROM
+int highscore = readIntFromEEPROM(45);
+
+void setup() {
+  Serial.begin(9600);
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  tare_start = scale.read()/1000;
+
+  // Kalibrerer loadcell og printer værdier
+  start = scale.read()/1000 - tare_start;
+  Serial.println("Start: " + String(start));
+  Serial.println("Highscore: " + String(highscore));
+  for (int i=0; i < PixelCount; i++) {
+      strip.SetPixelColor(i, black);
+    }
+  strip.Show();
+  
+}
+
+void loop() {
+  // Undersøger om scale er klar. Hvis den er læser den highscore værdien fra EEPROM. Herefter defineres map funktionen der beskriver vores range som ledstrippen skal bruge til at lyse.
+  if (scale.is_ready()) {
+    int highscore = readIntFromEEPROM(45);
+    Serial.println(scale.read()/-1000 + tare_start);
+    ledcount = map(scale.read()/-1000 + tare_start, 0, highscore, 0, PixelCount);
+
+    // Sætter ledstrip til sort
+    for (int i=0; i < PixelCount; i++) {
+      strip.SetPixelColor(i, black);
+    }
+
+    // Sætter ledstrip til i en range fra grøn til gul til rød, i forhold til hvor høj highscoren er
+    for (int j=0; j < ledcount; j++) {
+      if (j <= 10){
+        strip.SetPixelColor(j, green);  
+      }
+      if (j > 10 && j <= 20){
+        strip.SetPixelColor(j, yellow);  
+      }
+      if (j > 20){
+        strip.SetPixelColor(j, red);  
+      }
+      strip.Show();
+    }
+
+  // Tjekker om highscoren bliver slået. Hvis den gør skrives den nye highscore værdi ind i plads 45 på EEPROM
+  if (scale.read()/-1000 + tare_start > highscore) {
+      highscore = scale.read()/-1000 + tare_start;
+      writeIntIntoEEPROM(45,highscore);
+      Serial.println("NEW HIGHSCORE: " + String(highscore));
+    }
+  
+  } 
+
+  delay(50);
+  
+}
